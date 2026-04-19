@@ -11,8 +11,8 @@ export default function BookingForm({ onSuccess, onCancel }) {
   const [toast, setToast] = useState(null);
   const [serviceSearch, setServiceSearch] = useState("");
 
-  // ── Customer state ──
   const [customerMode, setCustomerMode] = useState(null);
+  const [newCustomerConfirmed, setNewCustomerConfirmed] = useState(false);
   const [customers, setCustomers] = useState([]);
   const [customersLoading, setCustomersLoading] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
@@ -78,6 +78,7 @@ export default function BookingForm({ onSuccess, onCancel }) {
   const resetCustomer = () => {
     setSelectedCustomer(null);
     setCustomerMode(null);
+    setNewCustomerConfirmed(false);
     setCustomerSearch("");
     setForm((f) => ({ ...f, customer_name: "", contact_number: "" }));
   };
@@ -135,14 +136,21 @@ export default function BookingForm({ onSuccess, onCancel }) {
       const { data: newCust, error: custError } = await supabase
         .from("customers")
         .insert([{ name: form.customer_name.trim(), phone: form.contact_number.trim() || null }])
-        .select()
-        .single();
+        .select("id, name, phone");
+
       if (custError) {
         showToast("error", "Failed to save customer: " + custError.message);
         setLoading(false);
         return;
       }
-      customerId = newCust.id;
+
+      if (!newCust || newCust.length === 0 || !newCust[0].id) {
+        showToast("error", "Customer was saved but ID could not be retrieved.");
+        setLoading(false);
+        return;
+      }
+
+      customerId = newCust[0].id;
     }
 
     const { data: booking, error: bookingError } = await supabase
@@ -187,12 +195,11 @@ export default function BookingForm({ onSuccess, onCancel }) {
   };
 
   const totalPrice = selectedServices.reduce((sum, s) => sum + (s.option_price || 0), 0);
-  const customerDone = selectedCustomer !== null || (customerMode === "new" && form.customer_name.trim());
+  const customerDone = selectedCustomer !== null || (customerMode === "new" && newCustomerConfirmed);
 
   const inputBase =
-    "w-full bg-white border border-[#ecddd6] rounded-2xl px-4 py-3.5 text-sm text-[#4a3028] placeholder-[#d4b8b0] focus:outline-none focus:border-[#c9a96e] focus:ring-4 focus:ring-[#c9a96e]/8 transition-all";
+    "w-full bg-white border border-[#ecddd6] rounded-2xl px-4 py-4 text-base text-[#4a3028] placeholder-[#d4b8b0] focus:outline-none focus:border-[#c9a96e] focus:ring-4 focus:ring-[#c9a96e]/10 transition-all min-h-[52px]";
 
-  // Step completion checks for progress indicator
   const step1Done = customerDone;
   const step2Done = form.booking_date && form.booking_time;
   const step3Done = selectedServices.length > 0;
@@ -200,14 +207,14 @@ export default function BookingForm({ onSuccess, onCancel }) {
   return (
     <div className="min-h-screen bg-[#fdf8f5]">
 
-      {/* ── Toast ── */}
+      {/* ── Toast — bottom-positioned on mobile ── */}
       {toast && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-2xl text-sm font-medium border shadow-xl transition-all ${
+        <div className={`fixed bottom-28 left-4 right-4 z-50 flex items-center gap-3 px-5 py-4 rounded-2xl text-sm font-medium border shadow-2xl transition-all sm:top-4 sm:bottom-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-auto sm:max-w-sm ${
           toast.type === "success"
             ? "bg-white text-emerald-700 border-emerald-200 shadow-emerald-100"
             : "bg-white text-rose-600 border-rose-200 shadow-rose-100"
         }`}>
-          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs flex-shrink-0 ${
+          <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0 ${
             toast.type === "success" ? "bg-emerald-100" : "bg-rose-100"
           }`}>
             {toast.type === "success" ? "✓" : "✕"}
@@ -216,42 +223,46 @@ export default function BookingForm({ onSuccess, onCancel }) {
         </div>
       )}
 
-      {/* ── Option Picker Modal ── */}
+      {/* ── Option Picker — full bottom sheet on mobile ── */}
       {optionPicker && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm"
           onClick={() => setOptionPicker(null)}
         >
           <div
-            className="bg-white rounded-3xl border border-[#f0ddd5] shadow-2xl w-full max-w-sm overflow-hidden"
+            className="bg-white rounded-t-3xl w-full max-w-lg overflow-hidden shadow-2xl"
+            style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Handle bar for mobile */}
-            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 bg-[#e8d5cc] rounded-full" />
             </div>
-            <div className="px-6 pt-4 pb-2">
-              <h4 className="text-base font-semibold text-[#4a3028]">{optionPicker.name}</h4>
-              <p className="text-xs text-[#c4a99f] mt-0.5">Choose a variant</p>
+
+            <div className="px-6 pt-3 pb-3 border-b border-[#f5e8e2]">
+              <h4 className="text-lg font-bold text-[#4a3028]">{optionPicker.name}</h4>
+              <p className="text-sm text-[#c4a99f] mt-0.5">Choose a variant</p>
             </div>
-            <div className="px-4 pb-4 space-y-2">
+
+            <div className="px-4 py-3 space-y-2.5 max-h-[60vh] overflow-y-auto">
               {(optionPicker.options || []).map((opt) => (
                 <button
                   key={opt.label}
                   type="button"
                   onClick={() => pickOption(optionPicker, opt)}
-                  className="w-full flex items-center justify-between px-4 py-4 rounded-2xl border border-[#f0ddd5] hover:border-[#c9a96e]/50 hover:bg-[#fdf0ea] active:scale-[0.98] transition-all text-left"
+                  className="w-full flex items-center justify-between px-5 py-5 rounded-2xl border border-[#f0ddd5] hover:border-[#c9a96e]/50 hover:bg-[#fdf0ea] active:scale-[0.98] active:bg-[#fdf0ea] transition-all text-left min-h-[64px]"
                 >
-                  <span className="text-sm text-[#4a3028] font-medium">{opt.label}</span>
-                  <span className="text-sm font-bold text-[#c9a96e]">₱{opt.price.toLocaleString()}</span>
+                  <span className="text-base text-[#4a3028] font-semibold">{opt.label}</span>
+                  <span className="text-base font-bold text-[#c9a96e]">₱{opt.price.toLocaleString()}</span>
                 </button>
               ))}
             </div>
-            <div className="px-4 pb-5">
+
+            <div className="px-4 pt-2 pb-4">
               <button
                 type="button"
                 onClick={() => setOptionPicker(null)}
-                className="w-full py-3 rounded-2xl bg-[#fdf0ea] text-sm text-[#b89890] font-medium hover:text-[#7a5a50] transition-all"
+                className="w-full py-4 rounded-2xl bg-[#fdf0ea] text-base text-[#b89890] font-semibold hover:text-[#7a5a50] transition-all min-h-[56px]"
               >
                 Cancel
               </button>
@@ -262,32 +273,43 @@ export default function BookingForm({ onSuccess, onCancel }) {
 
       {/* ── Page Header ── */}
       <div className="sticky top-0 z-30 bg-[#fdf8f5]/95 backdrop-blur-sm border-b border-[#f0ddd5]">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="w-9 h-9 flex items-center justify-center rounded-xl bg-white border border-[#ecddd6] text-[#b89890] hover:text-[#5a3e36] hover:border-[#d4b8b0] transition-all flex-shrink-0"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-base font-bold text-[#4a3028] leading-tight">New Booking</h1>
-            <p className="text-[11px] text-[#c4a99f]">Fill in the appointment details</p>
-          </div>
-          {/* Mini progress dots */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {[step1Done, step2Done, step3Done].map((done, i) => (
-              <div key={i} className={`w-2 h-2 rounded-full transition-all ${done ? "bg-[#c9a96e]" : "bg-[#e8d5cc]"}`} />
-            ))}
+        <div
+          className="max-w-2xl mx-auto px-4 flex items-center gap-3"
+          style={{ paddingTop: "max(16px, env(safe-area-inset-top))" }}
+        >
+          <div className="pb-4 flex items-center gap-3 w-full">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="w-11 h-11 flex items-center justify-center rounded-xl bg-white border border-[#ecddd6] text-[#b89890] hover:text-[#5a3e36] hover:border-[#d4b8b0] transition-all flex-shrink-0 active:scale-95"
+              aria-label="Go back"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-base font-bold text-[#4a3028] leading-tight">New Booking</h1>
+              <p className="text-xs text-[#c4a99f]">Fill in the appointment details</p>
+            </div>
+            {/* Step progress dots */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {[step1Done, step2Done, step3Done].map((done, i) => (
+                <div
+                  key={i}
+                  className={`rounded-full transition-all duration-300 ${
+                    done ? "w-6 h-2.5 bg-[#c9a96e]" : "w-2.5 h-2.5 bg-[#e8d5cc]"
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
       {/* ── Form Body ── */}
       <form onSubmit={handleSubmit}>
-        <div className="max-w-2xl mx-auto px-4 py-5 space-y-4 pb-32">
+        <div className="max-w-2xl mx-auto px-4 py-5 space-y-4 pb-36">
 
           {/* ── STEP 1: Customer ── */}
           <Section
@@ -303,8 +325,8 @@ export default function BookingForm({ onSuccess, onCancel }) {
             {customerDone ? (
               <div className="flex items-center justify-between p-4 bg-[#fdf0ea] rounded-2xl border border-[#e8d5cc]">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#c9a96e] to-[#d4b97e] flex items-center justify-center flex-shrink-0 shadow-sm">
-                    <span className="text-sm font-bold text-white">{form.customer_name.charAt(0).toUpperCase()}</span>
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#c9a96e] to-[#d4b97e] flex items-center justify-center flex-shrink-0 shadow-sm">
+                    <span className="text-base font-bold text-white">{form.customer_name.charAt(0).toUpperCase()}</span>
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -318,76 +340,80 @@ export default function BookingForm({ onSuccess, onCancel }) {
                       </span>
                     </div>
                     {form.contact_number && form.contact_number !== "00" && (
-                      <p className="text-xs text-[#b89890] mt-0.5">{form.contact_number}</p>
+                      <p className="text-sm text-[#b89890] mt-0.5">{form.contact_number}</p>
                     )}
                   </div>
                 </div>
+                {/* Larger tap target for Change */}
                 <button
                   type="button"
                   onClick={resetCustomer}
-                  className="text-xs text-[#c4a99f] hover:text-[#7a5a50] transition-all px-3 py-2 rounded-xl border border-[#e8d5cc] bg-white hover:border-[#d4b8b0] flex-shrink-0 ml-2"
+                  className="text-sm text-[#c4a99f] hover:text-[#7a5a50] transition-all px-4 py-3 rounded-xl border border-[#e8d5cc] bg-white hover:border-[#d4b8b0] flex-shrink-0 ml-2 min-h-[44px] font-medium"
                 >
                   Change
                 </button>
               </div>
             ) : customerMode === null ? (
               <div>
-                <p className="text-sm text-[#b89890] mb-3">Is this customer in the system?</p>
+                <p className="text-sm text-[#b89890] mb-4">Is this customer in the system?</p>
+                {/* Taller cards for easier tapping */}
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setCustomerMode("existing")}
-                    className="py-5 rounded-2xl border-2 border-[#ecddd6] hover:border-[#c9a96e]/50 hover:bg-[#fdf0ea] active:scale-[0.97] transition-all text-center"
+                    className="py-6 rounded-2xl border-2 border-[#ecddd6] hover:border-[#c9a96e]/50 hover:bg-[#fdf0ea] active:scale-[0.97] active:bg-[#fdf0ea] transition-all text-center min-h-[120px]"
                   >
-                    <div className="text-2xl mb-2">👤</div>
-                    <div className="text-sm font-semibold text-[#4a3028]">Yes, existing</div>
-                    <div className="text-[11px] text-[#c4a99f] mt-0.5">Search database</div>
+                    <div className="text-3xl mb-2.5">👤</div>
+                    <div className="text-sm font-bold text-[#4a3028]">Yes, existing</div>
+                    <div className="text-xs text-[#c4a99f] mt-1">Search database</div>
                   </button>
                   <button
                     type="button"
                     onClick={() => setCustomerMode("new")}
-                    className="py-5 rounded-2xl border-2 border-[#ecddd6] hover:border-[#c9a96e]/50 hover:bg-[#fdf0ea] active:scale-[0.97] transition-all text-center"
+                    className="py-6 rounded-2xl border-2 border-[#ecddd6] hover:border-[#c9a96e]/50 hover:bg-[#fdf0ea] active:scale-[0.97] active:bg-[#fdf0ea] transition-all text-center min-h-[120px]"
                   >
-                    <div className="text-2xl mb-2">✨</div>
-                    <div className="text-sm font-semibold text-[#4a3028]">No, new</div>
-                    <div className="text-[11px] text-[#c4a99f] mt-0.5">Enter manually</div>
+                    <div className="text-3xl mb-2.5">✨</div>
+                    <div className="text-sm font-bold text-[#4a3028]">No, new</div>
+                    <div className="text-xs text-[#c4a99f] mt-1">Enter manually</div>
                   </button>
                 </div>
               </div>
             ) : customerMode === "existing" ? (
               <div>
                 <div className="relative mb-3">
-                  <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#d4b8b0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#d4b8b0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                   <input
                     ref={searchRef}
-                    type="text"
+                    type="search"
+                    inputMode="search"
                     placeholder="Search by name or phone…"
                     value={customerSearch}
                     onChange={(e) => setCustomerSearch(e.target.value)}
-                    className={inputBase + " pl-10"}
+                    className={inputBase + " pl-12"}
                   />
                 </div>
                 {customersLoading ? (
-                  <div className="text-center py-6 text-[#d4b8b0] text-sm">Loading…</div>
+                  <div className="text-center py-8 text-[#d4b8b0] text-sm">Loading…</div>
                 ) : (
-                  <div className="max-h-52 overflow-y-auto rounded-2xl border border-[#ecddd6] divide-y divide-[#f5e8e2] bg-white">
+                  <div className="max-h-64 overflow-y-auto rounded-2xl border border-[#ecddd6] divide-y divide-[#f5e8e2] bg-white">
                     {filteredCustomers.length === 0 ? (
-                      <div className="py-6 text-center text-sm text-[#c4a99f]">No customers found</div>
+                      <div className="py-8 text-center text-sm text-[#c4a99f]">No customers found</div>
                     ) : (
                       filteredCustomers.map((c) => (
                         <button
                           key={c.id}
                           type="button"
                           onClick={() => selectCustomer(c)}
-                          className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-[#fdf8f5] active:bg-[#fdf0ea] transition-all text-left"
+                          /* Taller rows — easier to tap */
+                          className="w-full flex items-center justify-between px-4 py-4 hover:bg-[#fdf8f5] active:bg-[#fdf0ea] transition-all text-left min-h-[60px]"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-[#fdf0ea] flex items-center justify-center flex-shrink-0">
-                              <span className="text-xs font-bold text-[#c9a96e]">{c.name?.charAt(0).toUpperCase()}</span>
+                            <div className="w-10 h-10 rounded-full bg-[#fdf0ea] flex items-center justify-center flex-shrink-0">
+                              <span className="text-sm font-bold text-[#c9a96e]">{c.name?.charAt(0).toUpperCase()}</span>
                             </div>
-                            <span className="text-sm text-[#4a3028] font-medium">{c.name}</span>
+                            <span className="text-sm text-[#4a3028] font-semibold">{c.name}</span>
                           </div>
                           {c.phone && c.phone !== "00" && (
                             <span className="text-xs text-[#c4a99f]">{c.phone}</span>
@@ -397,28 +423,74 @@ export default function BookingForm({ onSuccess, onCancel }) {
                     )}
                   </div>
                 )}
-                <button type="button" onClick={() => setCustomerMode(null)} className="mt-3 text-xs text-[#c4a99f] hover:text-[#7a5a50] transition-all flex items-center gap-1">
-                  <span>←</span> Back
+                {/* Back button — proper tap target */}
+                <button
+                  type="button"
+                  onClick={() => setCustomerMode(null)}
+                  className="mt-4 flex items-center gap-1.5 text-sm text-[#c4a99f] hover:text-[#7a5a50] transition-all py-2 min-h-[44px]"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              /* ── New Customer Form ── */
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-xs text-[#b89890] mb-1.5 font-medium">Full Name *</label>
-                  <input name="customer_name" value={form.customer_name} onChange={handleChange} required placeholder="e.g. Maria Santos" className={inputBase} />
+                  <label className="block text-sm text-[#b89890] mb-2 font-semibold">Full Name *</label>
+                  <input
+                    name="customer_name"
+                    value={form.customer_name}
+                    onChange={handleChange}
+                    placeholder="e.g. Maria Santos"
+                    className={inputBase}
+                    autoComplete="name"
+                    autoCapitalize="words"
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs text-[#b89890] mb-1.5 font-medium">Contact Number</label>
-                  <input name="contact_number" value={form.contact_number} onChange={handleChange} placeholder="e.g. 09XX XXX XXXX" className={inputBase} type="tel" />
+                  <label className="block text-sm text-[#b89890] mb-2 font-semibold">Contact Number</label>
+                  <input
+                    name="contact_number"
+                    value={form.contact_number}
+                    onChange={handleChange}
+                    placeholder="e.g. 09XX XXX XXXX"
+                    className={inputBase}
+                    type="tel"
+                    inputMode="tel"
+                    autoComplete="tel"
+                  />
                 </div>
-                <button type="button" onClick={() => setCustomerMode(null)} className="text-xs text-[#c4a99f] hover:text-[#7a5a50] transition-all flex items-center gap-1">
-                  <span>←</span> Back
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (form.customer_name.trim()) {
+                      setNewCustomerConfirmed(true);
+                    } else {
+                      showToast("error", "Please enter the customer's name.");
+                    }
+                  }}
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-[#c9a96e] to-[#d4b97e] text-white text-base font-bold hover:from-[#d4b97e] hover:to-[#e0c98e] transition-all shadow-md shadow-[#c9a96e]/20 active:scale-[0.98] min-h-[56px]"
+                >
+                  Confirm Customer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomerMode(null)}
+                  className="flex items-center gap-1.5 text-sm text-[#c4a99f] hover:text-[#7a5a50] transition-all py-2 min-h-[44px]"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back
                 </button>
               </div>
             )}
           </Section>
 
-          {/* ── STEP 2: Schedule ── */}
+          {/* ── STEP 2: Schedule — stacked on mobile ── */}
           <Section
             number="2"
             title="Date & Time"
@@ -429,9 +501,10 @@ export default function BookingForm({ onSuccess, onCancel }) {
               </svg>
             }
           >
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-[#b89890] mb-1.5 font-medium">Date *</label>
+            {/* Stack vertically on mobile, side-by-side on sm+ */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
+                <label className="block text-sm text-[#b89890] mb-2 font-semibold">Date *</label>
                 <input
                   name="booking_date"
                   type="date"
@@ -441,8 +514,8 @@ export default function BookingForm({ onSuccess, onCancel }) {
                   className={inputBase + " [color-scheme:light]"}
                 />
               </div>
-              <div>
-                <label className="block text-xs text-[#b89890] mb-1.5 font-medium">Time *</label>
+              <div className="flex-1">
+                <label className="block text-sm text-[#b89890] mb-2 font-semibold">Time *</label>
                 <input
                   name="booking_time"
                   type="time"
@@ -467,47 +540,50 @@ export default function BookingForm({ onSuccess, onCancel }) {
               </svg>
             }
           >
-            {/* Selected chips */}
             {selectedServices.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4 p-3 bg-[#fdf0ea] rounded-2xl border border-[#e8d5cc]">
                 {selectedServices.map((s) => (
+                  /* Taller chips for easier tap-to-remove */
                   <button
                     key={s.instance_id}
                     type="button"
                     onClick={() => removeSelected(s.instance_id)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[#e8d5cc] text-[#a07840] rounded-xl text-xs hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 active:scale-[0.97] transition-all"
+                    className="flex items-center gap-1.5 px-3 py-2 bg-white border border-[#e8d5cc] text-[#a07840] rounded-xl text-sm hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500 active:scale-[0.97] transition-all min-h-[40px]"
                   >
-                    <span className="font-medium">{s.service_name}</span>
+                    <span className="font-semibold">{s.service_name}</span>
                     {s.option_label !== "Default" && (
                       <span className="text-[#c9a96e]/70">· {s.option_label}</span>
                     )}
-                    <span className="text-[#c9a96e] font-semibold">₱{s.option_price?.toLocaleString()}</span>
-                    <span className="text-[#ccc] ml-0.5 text-sm leading-none">×</span>
+                    <span className="text-[#c9a96e] font-bold">₱{s.option_price?.toLocaleString()}</span>
+                    <span className="text-[#bbb] ml-0.5 text-base leading-none">×</span>
                   </button>
                 ))}
               </div>
             )}
 
-            {/* Search */}
+            {/* Search bar */}
             <div className="relative mb-3">
-              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#d4b8b0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#d4b8b0]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
-                type="text"
+                type="search"
+                inputMode="search"
                 placeholder="Search services…"
                 value={serviceSearch}
                 onChange={(e) => {
                   setServiceSearch(e.target.value);
                   setOpenCategory(e.target.value ? "__all__" : null);
                 }}
-                className={inputBase + " pl-10 pr-8"}
+                className={inputBase + " pl-12 pr-12"}
               />
               {serviceSearch && (
+                /* Larger clear button — 44px tap target */
                 <button
                   type="button"
                   onClick={() => { setServiceSearch(""); setOpenCategory(null); }}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#e8d5cc] text-[#b89890] hover:bg-[#d4b8b0] hover:text-white flex items-center justify-center text-xs transition-all"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-[#e8d5cc] text-[#b89890] hover:bg-[#d4b8b0] hover:text-white flex items-center justify-center text-base transition-all"
+                  aria-label="Clear search"
                 >
                   ×
                 </button>
@@ -515,7 +591,7 @@ export default function BookingForm({ onSuccess, onCancel }) {
             </div>
 
             {servicesLoading ? (
-              <div className="text-center py-10 text-[#d4b8b0] text-sm">Loading services…</div>
+              <div className="text-center py-12 text-[#d4b8b0] text-sm">Loading services…</div>
             ) : (() => {
               const query = serviceSearch.toLowerCase();
               const filteredGrouped = Object.entries(grouped).reduce((acc, [cat, items]) => {
@@ -528,7 +604,7 @@ export default function BookingForm({ onSuccess, onCancel }) {
               if (entries.length === 0) {
                 return (
                   <div className="text-center py-10 text-[#c4a99f] text-sm border border-[#f0ddd5] rounded-2xl">
-                    <div className="text-2xl mb-2">🔍</div>
+                    <div className="text-3xl mb-2">🔍</div>
                     No services match "{serviceSearch}"
                   </div>
                 );
@@ -544,71 +620,83 @@ export default function BookingForm({ onSuccess, onCancel }) {
 
                     return (
                       <div key={category} className={i > 0 ? "border-t border-[#f5e8e2]" : ""}>
+                        {/* Category header — min 52px for easy tapping */}
                         <button
                           type="button"
                           onClick={() => !serviceSearch && setOpenCategory(openCategory === category ? null : category)}
-                          className={`w-full flex items-center justify-between px-4 py-4 transition-all text-left ${!serviceSearch ? "hover:bg-[#fdf8f5] active:bg-[#fdf0ea]" : "cursor-default"}`}
+                          className={`w-full flex items-center justify-between px-4 py-4 transition-all text-left min-h-[56px] ${!serviceSearch ? "hover:bg-[#fdf8f5] active:bg-[#fdf0ea]" : "cursor-default"}`}
                         >
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-sm font-semibold text-[#4a3028]">{category}</span>
-                            <span className="text-[10px] text-[#d4b8b0] bg-[#fdf0ea] px-1.5 py-0.5 rounded-md">{items.length}</span>
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <span className="text-sm font-bold text-[#4a3028]">{category}</span>
+                            <span className="text-xs text-[#d4b8b0] bg-[#fdf0ea] px-2 py-0.5 rounded-md">{items.length}</span>
                             {instancesInCat > 0 && (
-                              <span className="text-[10px] bg-[#c9a96e]/15 text-[#a07840] px-2 py-0.5 rounded-full font-semibold">
+                              <span className="text-xs bg-[#c9a96e]/15 text-[#a07840] px-2.5 py-1 rounded-full font-bold">
                                 {instancesInCat} ✓
                               </span>
                             )}
                           </div>
                           {!serviceSearch && (
-                            <svg className={`w-4 h-4 text-[#d4b8b0] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className={`w-5 h-5 text-[#d4b8b0] transition-transform duration-200 flex-shrink-0 ml-2 ${isOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                             </svg>
                           )}
                         </button>
 
                         {isOpen && (
-                          <div className="px-3 pb-3 grid grid-cols-2 sm:grid-cols-3 gap-2 bg-[#fdf8f5] border-t border-[#f5e8e2]">
+                          <div className="px-3 pb-3 space-y-2 bg-[#fdf8f5] border-t border-[#f5e8e2]">
                             {items.map((service) => {
                               const serviceInstances = selectedServices.filter((s) => s.service_id === service.id);
                               const isSelected = serviceInstances.length > 0;
                               const options = Array.isArray(service.options) ? service.options : [];
 
                               return (
+                                /* Full-width rows instead of a grid — much easier to tap on mobile */
                                 <button
                                   key={service.id}
                                   type="button"
                                   onClick={() => handleServiceTap(service)}
-                                  className={`px-3 py-3 rounded-xl text-xs text-left transition-all border active:scale-[0.96] ${
+                                  className={`w-full flex items-center justify-between px-4 py-4 rounded-xl text-left transition-all border active:scale-[0.98] min-h-[56px] ${
                                     isSelected
-                                      ? "bg-[#c9a96e]/12 border-[#c9a96e]/40 text-[#a07840]"
-                                      : "bg-white border-[#ecddd6] text-[#6a4a42] hover:border-[#c9a96e]/40 hover:bg-[#fdf0ea]"
+                                      ? "bg-[#c9a96e]/10 border-[#c9a96e]/40"
+                                      : "bg-white border-[#ecddd6] hover:border-[#c9a96e]/40 hover:bg-[#fdf0ea]"
                                   }`}
                                 >
-                                  <div className="flex items-start justify-between gap-1 mb-1">
-                                    <span className="font-medium leading-tight">
-                                      {isSelected && (
-                                        <span className="text-[#c9a96e] mr-1">
-                                          {serviceInstances.length > 1 ? `×${serviceInstances.length}` : "✓"}
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    {/* Checkmark / count indicator */}
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold transition-all ${
+                                      isSelected
+                                        ? "bg-[#c9a96e] text-white"
+                                        : "bg-[#f5e8e2] text-[#d4b8b0]"
+                                    }`}>
+                                      {isSelected
+                                        ? (serviceInstances.length > 1 ? serviceInstances.length : "✓")
+                                        : "+"}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <span className={`text-sm font-semibold truncate block ${isSelected ? "text-[#a07840]" : "text-[#4a3028]"}`}>
+                                        {service.name}
+                                      </span>
+                                      {isSelected && serviceInstances[serviceInstances.length - 1].option_label !== "Default" && (
+                                        <span className="text-xs text-[#c9a96e]/80 block">
+                                          {serviceInstances[serviceInstances.length - 1].option_label}
                                         </span>
                                       )}
-                                      {service.name}
-                                    </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                                     {options.length > 1 && !isSelected && (
-                                      <span className="text-[9px] text-[#c4a99f] shrink-0 mt-0.5 bg-[#fdf0ea] px-1 rounded">
+                                      <span className="text-xs text-[#c4a99f] bg-[#fdf0ea] px-1.5 py-0.5 rounded">
                                         {options.length} opts
                                       </span>
                                     )}
-                                  </div>
-                                  <div className="text-[10px] font-semibold">
-                                    {isSelected ? (
-                                      <span className="text-[#c9a96e]">
-                                        {serviceInstances[serviceInstances.length - 1].option_label !== "Default"
-                                          ? serviceInstances[serviceInstances.length - 1].option_label + " · "
-                                          : ""}
-                                        ₱{serviceInstances[serviceInstances.length - 1].option_price?.toLocaleString()}
-                                      </span>
-                                    ) : options.length === 1 ? (
-                                      <span className="text-[#c4a99f]">₱{options[0].price.toLocaleString()}</span>
-                                    ) : null}
+                                    <span className={`text-sm font-bold ${isSelected ? "text-[#c9a96e]" : "text-[#c4a99f]"}`}>
+                                      {isSelected
+                                        ? `₱${serviceInstances[serviceInstances.length - 1].option_price?.toLocaleString()}`
+                                        : options.length === 1
+                                          ? `₱${options[0].price.toLocaleString()}`
+                                          : null}
+                                    </span>
                                   </div>
                                 </button>
                               );
@@ -638,47 +726,49 @@ export default function BookingForm({ onSuccess, onCancel }) {
               name="notes"
               value={form.notes}
               onChange={handleChange}
-              rows={3}
+              rows={4}
               placeholder="Paste notes from Facebook chat here…"
-              className={inputBase + " resize-none"}
+              className={inputBase + " resize-none leading-relaxed"}
             />
           </Section>
 
         </div>
 
-        {/* ── Sticky Footer ── */}
-        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#ecddd6] px-4 py-4 safe-bottom">
+        {/* ── Sticky Footer — safe-area aware ── */}
+        <div
+          className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-sm border-t border-[#ecddd6] px-4 pt-4"
+          style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
+        >
           <div className="max-w-2xl mx-auto">
-            {/* Summary row */}
             {selectedServices.length > 0 && (
               <div className="flex items-center justify-between mb-3 px-1">
-                <span className="text-xs text-[#c4a99f]">
+                <span className="text-sm text-[#c4a99f]">
                   {selectedServices.length} service{selectedServices.length !== 1 ? "s" : ""}
                 </span>
-                <span className="text-sm font-bold text-[#c9a96e]">₱{totalPrice.toLocaleString()}</span>
+                <span className="text-base font-bold text-[#c9a96e]">₱{totalPrice.toLocaleString()}</span>
               </div>
             )}
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={onCancel}
-                className="flex-1 py-3.5 rounded-2xl text-sm text-[#b89890] border border-[#ecddd6] bg-white hover:bg-[#fdf8f5] hover:border-[#d4b8b0] transition-all font-medium"
+                className="flex-1 py-4 rounded-2xl text-base text-[#b89890] border border-[#ecddd6] bg-white hover:bg-[#fdf8f5] hover:border-[#d4b8b0] transition-all font-semibold min-h-[56px] active:scale-[0.98]"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={loading}
-                className="flex-[2] py-3.5 rounded-2xl text-sm font-bold bg-gradient-to-r from-[#c9a96e] to-[#d4b97e] text-white hover:from-[#d4b97e] hover:to-[#e0c98e] shadow-lg shadow-[#c9a96e]/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-2"
+                className="flex-[2] py-4 rounded-2xl text-base font-bold bg-gradient-to-r from-[#c9a96e] to-[#d4b97e] text-white hover:from-[#d4b97e] hover:to-[#e0c98e] shadow-lg shadow-[#c9a96e]/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98] flex items-center justify-center gap-2 min-h-[56px]"
               >
                 {loading ? (
                   <>
-                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     Saving…
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>
                     Save Booking
@@ -693,29 +783,31 @@ export default function BookingForm({ onSuccess, onCancel }) {
   );
 }
 
-// ── Reusable Section Card ──────────────────────────────────────────────────
+// ── Reusable Section Card ─────────────────────────────────────────────────
 function Section({ number, title, children, done, badge, optional, icon }) {
   return (
     <div className={`bg-white rounded-3xl border overflow-hidden shadow-sm transition-all ${done ? "border-[#e8d5cc]" : "border-[#ecddd6]"}`}>
-      <div className={`flex items-center gap-3 px-5 py-4 border-b ${done ? "border-[#f0e0d8] bg-gradient-to-r from-[#fdf8f5] to-white" : "border-[#f5ebe5] bg-white"}`}>
-        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+      <div className={`flex items-center gap-3 px-5 py-4 border-b min-h-[60px] ${done ? "border-[#f0e0d8] bg-gradient-to-r from-[#fdf8f5] to-white" : "border-[#f5ebe5] bg-white"}`}>
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
           done
             ? "bg-[#c9a96e] text-white shadow-sm shadow-[#c9a96e]/30"
             : "bg-[#fdf0ea] text-[#d4b8b0] border border-[#ecddd6]"
         }`}>
           {done ? (
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>
           ) : (
-            <span className="text-[11px] font-bold">{number}</span>
+            <span className="text-xs font-bold">{number}</span>
           )}
         </div>
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className={`text-sm font-semibold ${done ? "text-[#4a3028]" : "text-[#7a5a50]"}`}>{title}</span>
-          {optional && <span className="text-[10px] text-[#d4b8b0] bg-[#fdf0ea] px-1.5 py-0.5 rounded-md">optional</span>}
+          <span className={`text-sm font-bold ${done ? "text-[#4a3028]" : "text-[#7a5a50]"}`}>{title}</span>
+          {optional && (
+            <span className="text-[10px] text-[#d4b8b0] bg-[#fdf0ea] px-1.5 py-0.5 rounded-md">optional</span>
+          )}
           {badge && (
-            <span className="text-[10px] bg-[#c9a96e]/12 text-[#a07840] px-2.5 py-1 rounded-full font-bold border border-[#c9a96e]/20 ml-auto flex-shrink-0">
+            <span className="text-xs bg-[#c9a96e]/12 text-[#a07840] px-2.5 py-1 rounded-full font-bold border border-[#c9a96e]/20 ml-auto flex-shrink-0">
               {badge}
             </span>
           )}
