@@ -125,31 +125,151 @@ function DatePicker({ value, onChange }) {
 
 // ─── Custom Time Picker ───────────────────────────────────────────────────────
 function TimePicker({ value, onChange }) {
+  const hours = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+  const mins  = ['00','05','10','15','20','25','30','35','40','45','50','55'];
+
+  // Parse existing value (24h "HH:MM") into picker state
+  const parseValue = (v) => {
+    if (!v) return { hIdx: 0, mIdx: 0, ampm: 'AM' };
+    const [hh, mm] = v.split(':').map(Number);
+    const ampm = hh >= 12 ? 'PM' : 'AM';
+    const h12  = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh;
+    const hIdx = hours.indexOf(String(h12).padStart(2, '0'));
+    const mIdx = mins.indexOf(String(mm).padStart(2, '0'));
+    return { hIdx: hIdx < 0 ? 0 : hIdx, mIdx: mIdx < 0 ? 0 : mIdx, ampm };
+  };
+
+  const init = parseValue(value);
+  const [hIdx, setHIdx] = useState(init.hIdx);
+  const [mIdx, setMIdx] = useState(init.mIdx);
+  const [ampm, setAmpm] = useState(init.ampm);
+
+  const hrRef = useRef(null);
+  const mnRef = useRef(null);
+
+  // Emit 24h value upward
+  const emit = (h, m, ap) => {
+    const h12 = parseInt(hours[h], 10);
+    let h24 = ap === 'AM' ? (h12 === 12 ? 0 : h12) : (h12 === 12 ? 12 : h12 + 12);
+    onChange(`${String(h24).padStart(2,'0')}:${mins[m]}`);
+  };
+
+  // Scroll a column and wire snap-scroll listener
+  const setupCol = (ref, idx, setter, isHour) => {
+    if (!ref.current) return;
+    const el = ref.current;
+    el.scrollTop = idx * 60;
+    const handler = () => {
+      clearTimeout(el._t);
+      el._t = setTimeout(() => {
+        const i = Math.round(el.scrollTop / 60);
+        if (i === el._last) return;
+        el._last = i;
+        el.scrollTo({ top: i * 60, behavior: 'smooth' });
+        setter(i);
+        if (isHour) emit(i, mIdx, ampm);
+        else        emit(hIdx, i, ampm);
+      }, 80);
+    };
+    el.removeEventListener('scroll', el._handler);
+    el._handler = handler;
+    el.addEventListener('scroll', handler);
+    el._last = idx;
+  };
+
+  useEffect(() => { setupCol(hrRef, hIdx, setHIdx, true);  }, []);
+  useEffect(() => { setupCol(mnRef, mIdx, setMIdx, false); }, []);
+
+  const handleAmpm = (ap) => {
+    setAmpm(ap);
+    emit(hIdx, mIdx, ap);
+  };
+
+  const h12 = hours[hIdx];
+  const mm  = mins[mIdx];
+
+  const colStyle = {
+    height: 180, width: 72, overflowY: 'scroll', scrollSnapType: 'y mandatory',
+    scrollbarWidth: 'none', borderRadius: 16, border: '1px solid #ecddd6',
+    background: '#fdf8f5', position: 'relative',
+  };
+  const itemStyle = (sel) => ({
+    height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center',
+    scrollSnapAlign: 'center', fontSize: 22, fontWeight: 700,
+    color: sel ? '#4a3028' : '#b89890', cursor: 'pointer', userSelect: 'none',
+  });
+  const selBarStyle = {
+    position: 'absolute', top: '50%', left: 8, right: 8, height: 60,
+    transform: 'translateY(-50%)', borderRadius: 12,
+    background: '#c9a96e18', border: '1.5px solid #c9a96e55',
+    pointerEvents: 'none', zIndex: 2,
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-[#ecddd6] p-4">
-      <p className="text-[10px] font-bold text-[#d4b8b0] uppercase tracking-wider mb-3">Select time</p>
+      <p className="text-[10px] font-bold text-[#d4b8b0] uppercase tracking-wider mb-4">Select time</p>
 
-      <input
-        type="time"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="w-full bg-[#fdf8f5] border border-[#ecddd6] rounded-2xl px-4 py-4 text-xl font-bold text-[#4a3028] text-center focus:outline-none focus:border-[#c9a96e] focus:ring-4 focus:ring-[#c9a96e]/10 transition-all [color-scheme:light] cursor-pointer"
-      />
+      <div className="flex gap-2 justify-center items-center">
+        {/* Hour column */}
+        <div className="flex flex-col items-center gap-1.5">
+          <span className="text-[10px] font-bold text-[#d4b8b0] uppercase tracking-wider">Hour</span>
+          <div style={{ position: 'relative' }}>
+            <div style={selBarStyle} />
+            <div ref={hrRef} style={colStyle}>
+              <div style={{ height: 60 }} />
+              {hours.map((h, i) => (
+                <div key={h} style={itemStyle(i === hIdx)}
+                  onClick={() => { hrRef.current.scrollTo({ top: i*60, behavior:'smooth' }); setHIdx(i); emit(i, mIdx, ampm); }}>
+                  {h}
+                </div>
+              ))}
+              <div style={{ height: 60 }} />
+            </div>
+          </div>
+        </div>
 
+        <span className="text-3xl font-bold text-[#c9a96e] mt-5">:</span>
+
+        {/* Minute column */}
+        <div className="flex flex-col items-center gap-1.5">
+          <span className="text-[10px] font-bold text-[#d4b8b0] uppercase tracking-wider">Min</span>
+          <div style={{ position: 'relative' }}>
+            <div style={selBarStyle} />
+            <div ref={mnRef} style={colStyle}>
+              <div style={{ height: 60 }} />
+              {mins.map((m, i) => (
+                <div key={m} style={itemStyle(i === mIdx)}
+                  onClick={() => { mnRef.current.scrollTo({ top: i*60, behavior:'smooth' }); setMIdx(i); emit(hIdx, i, ampm); }}>
+                  {m}
+                </div>
+              ))}
+              <div style={{ height: 60 }} />
+            </div>
+          </div>
+        </div>
+
+        {/* AM/PM */}
+        <div className="flex flex-col gap-1.5 mt-5">
+          {['AM','PM'].map(ap => (
+            <button key={ap} type="button" onClick={() => handleAmpm(ap)}
+              className={`w-14 h-14 rounded-xl text-sm font-bold transition-all border-2 ${
+                ampm === ap
+                  ? 'bg-[#c9a96e] border-[#c9a96e] text-white'
+                  : 'bg-[#fdf8f5] border-[#ecddd6] text-[#b89890] hover:border-[#c9a96e]/50'
+              }`}>
+              {ap}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Preview */}
       {value && (
-        <div className="mt-3 px-4 py-3 bg-[#fdf8f5] rounded-xl border border-[#f0ddd5] flex items-center gap-2">
+        <div className="mt-4 px-4 py-3 bg-[#fdf8f5] rounded-xl border border-[#f0ddd5] flex items-center gap-2">
           <svg className="w-4 h-4 text-[#c9a96e] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
-          <span className="text-sm font-semibold text-[#4a3028]">
-            {(() => {
-              const [hh, mm] = value.split(":");
-              const h24 = parseInt(hh, 10);
-              const a = h24 >= 12 ? "PM" : "AM";
-              const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
-              return `${String(h12).padStart(2, "0")}:${mm} ${a}`;
-            })()}
-          </span>
+          <span className="text-sm font-semibold text-[#4a3028]">{h12}:{mm} {ampm}</span>
         </div>
       )}
     </div>
