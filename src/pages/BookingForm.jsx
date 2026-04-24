@@ -1,13 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-// import { supabase } from "../utils/supabaseClient";
+import { supabase } from "../utils/supabaseClient";
 
 // ─── Mock supabase for preview ───────────────────────────────────────────────
-const supabase = {
-  from: () => ({
-    select: () => ({ order: () => ({ order: () => ({ data: [], error: null }) }) }),
-    insert: () => ({ select: () => ({ single: () => ({ data: { id: "mock-id" }, error: null }) }) }),
-  }),
-};
+
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
